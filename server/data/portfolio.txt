@@ -1,0 +1,68 @@
+# Jagannath Portfolio - jagannathn.com
+
+## About Me
+For me, Data Science is about building things that matter. I don't just look for patterns; I build end-to-end products that deliver real impact. Whether developing predictive models for the Center for Community Resilience or analyzing billions of records for NYC Taxi Insights, I ensure every solution I engineer produces actionable value.
+I also have a deep passion for Generative AI and am actively exploring roles in this space. I love pushing boundaries in hackathons—recently winning one with HealthTriage AI, where I leveraged GPT-4 to revolutionize symptom tracking. It's about using the latest tech to craft unique, problem-solving products.
+
+## Selected Work
+
+### NYC Taxi Insights
+Analyzed billions of records (2012-2023) using PySpark & MLlib to predict trip duration and demand hotspots.
+
+### SEC Knowledge Graph
+Uncovering corporate relationships using Neo4j and GraphRAG for financial insights.
+
+### NYISO Energy Market
+Streaming price anomaly detection & forecasting (91% R²) with PySpark Structured Streaming.
+
+### HealthTriage AI
+Professional platform with GPT-4 symptom tracking (99.2% accuracy) and telehealth integration. Won a hackathon with this project.
+
+### Loan Risk Analysis
+Fannie Mae Mortgage risk modeling & default prediction (2000-2023).
+
+### FinSight Platform
+Enterprise analytics with classifier-driven query routing & RBAC security.
+
+### AdaptLearn AI
+Gamified learning platform with 3D knowledge graphs and "Learning DNA" profiles. Personalized curriculum pathways.
+
+### Academic NFT
+Soul-bound NFTs for verified academic credentials and research access.
+
+### NLP Analytics Engine
+Advanced text analysis pipeline utilizing Transformer models for sentiment detection and entity recognition.
+
+### Promptly
+Automated prompt optimization platform designed to enhance LLM responses and manage context windows.
+
+## Career History
+
+### Data Scientist at Center for Community Resilience
+- Developed end-to-end predictive models integrating Census Bureau, FRED, and HUD APIs, applying regression & classification for 50+ researchers.
+- Built NLP-powered retrieval system using GPT-4, processing 500+ queries/week for complex demographic data access.
+- Deployed ensemble ML forecasting (ARIMA, LSTM, Prophet) for 5-year economic projections, reducing analyst workload by 60%.
+
+### Research Specialist III (Data Scientist)
+- Led full modeling lifecycle for Medicaid Workforce Tracker, defining objectives and performing statistical analysis on large-scale datasets.
+- Engineered scalable ETL pipelines for 3,000+ counties using PySpark, implementing ML-based anomaly detection.
+- Created data-driven presentations (Tableau, D3.js) translating complex findings for 100+ healthcare policymakers.
+
+## Education
+
+### George Washington University
+Master of Science in Data Analytics
+2024 - 2026 | Washington, DC
+
+### Bachelor of Technology
+Computer Science & Engineering
+2019 - 2023
+
+## Organizations
+- Google Developer Student Club at George Washington University - Bridging the gap between theory and practice with industry developer tools
+- Data Science for Sustainable Development (DSSD) - Using data science and GIS to accelerate sustainable development for nonprofits
+
+## Certifications & Awards
+- GitHub Sponsored Hackathon Winner - Deer Valley Coding Foundation
+- Google Data Analytics Professional - Google Career Certificates
+- Crash Course on Python - Google

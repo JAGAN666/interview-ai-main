@@ -1,0 +1,59 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment (Allowed in Private Repo)
+# .env 
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+
+# Data (Allowed in Private Repo)
+server/models/
+!server/interview_knowledge.db
+!server/data/*.pdf
+!server/data/*.txt
+!server/data/Jagannath.pdf
+!server/data/DA.pdf
+!.env
+
+# --- added by downloads->github migration ---
+.DS_Store
+node_modules/
+.venv/
+venv/
+env/
+__pycache__/
+.next/
+.git.nested-bak/
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+credentials*.json
+service_account*.json

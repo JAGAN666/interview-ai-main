@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: interview-ai-backend
+    runtime: docker
+    plan: free
+    region: ohio
+    # Root directory for the backend
+    rootDir: server
+    envVars:
+      - key: USE_GEMINI
+        value: true
+      - key: VITE_GEMINI_API_KEY
+        sync: false
+        description: "Your Google Gemini API Key"
+      - key: PORT
+        value: 8000

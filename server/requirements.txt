@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+transformers
+torch
+accelerate
+huggingface_hub
+python-dotenv
+python-multipart
+peft
+faiss-cpu
+sentence-transformers
+numpy
+pypdf
+langchain
+langchain-community
+langchain-huggingface
+google-generativeai
