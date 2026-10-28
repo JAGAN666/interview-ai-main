@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+  <title>Overlay</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="panel">
+    <header class="drag">
+      <span class="dot" id="dot"></span>
+      <span id="status">Ready</span>
+      <span class="spacer"></span>
+      <span class="badge hidden" id="ct-badge">click-through</span>
+      <button class="no-drag icon" id="hide" title="Hide (⌘⇧H)">–</button>
+    </header>
+
+    <div class="no-drag note-row">
+      <input id="note" placeholder="Optional context, e.g. “Python MCQ round, Q3–Q5”" />
+      <button id="analyze">Check ⌘⇧↵</button>
+    </div>
+
+    <div id="summary" class="summary hidden"></div>
+    <div id="results" class="results">
+      <div class="empty">
+        Put the candidate's screen in front of you and press <kbd>⌘⇧↵</kbd>.
+      </div>
+    </div>
+
+    <footer>
+      <span><kbd>⌘⇧H</kbd> hide</span>
+      <span><kbd>⌘⇧K</kbd> click-through</span>
+      <span><kbd>⌘⇧arrows</kbd> move</span>
+      <span><kbd>⌘⇧R</kbd> clear</span>
+      <span><kbd>⌘⇧Q</kbd> quit</span>
+    </footer>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>
