@@ -2,16 +2,25 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 
-const { app, BrowserWindow, globalShortcut, desktopCapturer, screen, ipcMain, systemPreferences } = require('electron');
+const { app, BrowserWindow, globalShortcut, desktopCapturer, screen, ipcMain, systemPreferences, nativeImage } = require('electron');
 const { analyzeScreenshot, errorMessage, MODEL } = require('./analyzer');
+
+const { LiveMonitor } = require('./live-monitor');
+
+const monitor = new LiveMonitor({
+  capture: captureDisplayUnderCursor,
+  analyze: async (jpeg, context) => {
+    try { return await analyzeScreenshot(jpeg, context); }
+    catch (err) { throw new Error(errorMessage(err)); }
+  },
+  emit: send,
+});
 
 const MOVE_STEP = 40;
 const MAX_CAPTURE_WIDTH = 2400;
 
 let win;
-let note = '';
 let clickThrough = false;
-let busy = false;
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
@@ -49,6 +58,7 @@ function createWindow() {
   win.once('ready-to-show', () => {
     win.showInactive();
     send('config', { model: MODEL, hasKey: Boolean(process.env.ANTHROPIC_API_KEY) });
+    if (process.env.ANTHROPIC_API_KEY && process.env.OVERLAY_LIVE !== '0') monitor.start();
   });
 }
 
@@ -74,26 +84,33 @@ async function captureDisplayUnderCursor() {
 
   let image = source.thumbnail;
   if (image.getSize().width > MAX_CAPTURE_WIDTH) image = image.resize({ width: MAX_CAPTURE_WIDTH, quality: 'best' });
-  return image.toJPEG(85);
+  // Mask our own UI even on capture backends that ignore content protection.
+  // This prevents answers/status updates from triggering another analysis.
+  const { width, height } = image.getSize();
+  const pixels = image.toBitmap();
+  if (win && win.isVisible()) {
+    const bounds = win.getBounds();
+    const sx = width / display.bounds.width;
+    const sy = height / display.bounds.height;
+    const left = Math.max(0, Math.floor((bounds.x - display.bounds.x) * sx));
+    const right = Math.min(width, Math.ceil((bounds.x + bounds.width - display.bounds.x) * sx));
+    const top = Math.max(0, Math.floor((bounds.y - display.bounds.y) * sy));
+    const bottom = Math.min(height, Math.ceil((bounds.y + bounds.height - display.bounds.y) * sy));
+    for (let y = top; y < bottom; y++) {
+      for (let x = left; x < right; x++) {
+        const i = (y * width + x) * 4;
+        pixels[i] = pixels[i + 1] = pixels[i + 2] = 32;
+        pixels[i + 3] = 255;
+      }
+    }
+    image = nativeImage.createFromBitmap(pixels, { width, height });
+  }
+  const signature = image.resize({ width: Math.min(960, width), quality: 'best' });
+  return { jpeg: image.toJPEG(85), pixels: signature.toBitmap(), source: `${source.id}:${width}x${height}` };
 }
 
-async function runAnalysis() {
-  if (busy) return;
-  busy = true;
-  console.log('[overlay] checking screen...');
-  try {
-    send('status', { state: 'capturing' });
-    const jpeg = await captureDisplayUnderCursor();
-    send('status', { state: 'analyzing' });
-    const result = await analyzeScreenshot(jpeg, note);
-    console.log(`[overlay] ${result.summary}`);
-    send('result', { ...result, at: Date.now() });
-  } catch (err) {
-    console.error(`[overlay] error: ${errorMessage(err)}`);
-    send('error', { message: errorMessage(err) });
-  } finally {
-    busy = false;
-  }
+function runAnalysis() {
+  void monitor.tick(true);
 }
 
 function toggleVisible() {
@@ -115,6 +132,7 @@ function move(dx, dy) {
 function registerShortcuts() {
   const shortcuts = {
     'CommandOrControl+Shift+Enter': runAnalysis,
+    'CommandOrControl+Shift+L': () => monitor.enabled ? monitor.stop() : monitor.start(),
     'CommandOrControl+Shift+H': toggleVisible,
     'CommandOrControl+Shift+K': toggleClickThrough,
     'CommandOrControl+Shift+R': () => send('clear'),
@@ -129,7 +147,8 @@ function registerShortcuts() {
   }
 }
 
-ipcMain.on('note', (_event, value) => { note = String(value || '').slice(0, 2000); });
+ipcMain.on('note', (_event, value) => monitor.setNote(String(value || '').slice(0, 2000)));
+ipcMain.on('live', (_event, enabled) => enabled ? monitor.start() : monitor.stop());
 ipcMain.on('analyze', runAnalysis);
 ipcMain.on('hide', () => win.hide());
 
@@ -142,5 +161,5 @@ app.whenReady().then(() => {
   if (process.env.OVERLAY_AUTOCHECK) setTimeout(runAnalysis, 3000);
 });
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => { monitor.stop(); globalShortcut.unregisterAll(); });
 app.on('window-all-closed', () => app.quit());

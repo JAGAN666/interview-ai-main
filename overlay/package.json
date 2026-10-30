@@ -6,7 +6,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "selftest": "electron selftest.js"
+    "selftest": "electron selftest.js",
+    "test": "node --test live-monitor.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
