@@ -9,9 +9,11 @@ const VERDICT_LABELS = {
 };
 
 let model = '';
+let live = false;
 
 function setStatus(text, state) {
   $('status').textContent = text;
+  $('status').title = text;
   $('dot').className = `dot ${state || ''}`;
 }
 
@@ -23,6 +25,8 @@ function el(tag, className, text) {
 }
 
 function renderResult(result) {
+  $('error').classList.add('hidden');
+  $('error').textContent = '';
   const summary = $('summary');
   summary.textContent = result.summary;
   summary.classList.remove('hidden');
@@ -65,8 +69,12 @@ window.overlay.on('config', (config) => {
 });
 
 window.overlay.on('status', ({ state }) => {
-  setStatus(state === 'capturing' ? 'Capturing screen…' : 'Claude is checking…', 'busy');
-  $('analyze').disabled = true;
+  const labels = { changed: 'Screen changed · waiting for latest answer…', analyzing: 'Claude is checking…' };
+  setStatus(labels[state] || 'Capturing screen…', 'busy');
+  if (state === 'changed') {
+    $('summary').classList.add('hidden');
+    $('results').replaceChildren(el('div', 'empty', 'Screen changed. Updating answer…'));
+  }
 });
 
 window.overlay.on('result', (result) => {
@@ -77,6 +85,8 @@ window.overlay.on('result', (result) => {
 window.overlay.on('error', ({ message }) => {
   $('analyze').disabled = false;
   setStatus(message, 'err');
+  $('error').textContent = message;
+  $('error').classList.remove('hidden');
 });
 
 window.overlay.on('clear', clear);
@@ -86,3 +96,11 @@ $('analyze').addEventListener('click', () => window.overlay.analyze());
 $('hide').addEventListener('click', () => window.overlay.hide());
 $('note').addEventListener('input', (e) => window.overlay.setNote(e.target.value));
 $('note').addEventListener('keydown', (e) => { if (e.key === 'Enter') window.overlay.analyze(); });
+
+window.overlay.on('live', ({ enabled }) => {
+  live = enabled;
+  $('live').textContent = live ? 'Pause live ⌘⇧L' : 'Start live ⌘⇧L';
+  $('live').setAttribute('aria-pressed', String(live));
+  setStatus(live ? 'Live · watching for screen changes' : 'Live paused · press Check for an answer');
+});
+$('live').addEventListener('click', () => window.overlay.setLive(!live));

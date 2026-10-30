@@ -43,7 +43,7 @@ const RESULT_SCHEMA = {
 let client;
 
 function getClient() {
-  if (!client) client = new Anthropic();
+  if (!client) client = new Anthropic({ timeout: 60000, maxRetries: 0 });
   return client;
 }
 
@@ -83,8 +83,9 @@ async function analyzeScreenshot(jpegBuffer, note) {
 function errorMessage(err) {
   if (err instanceof Anthropic.AuthenticationError) return 'Invalid or missing ANTHROPIC_API_KEY (see overlay/.env.example)';
   if (err instanceof Anthropic.RateLimitError) return 'Rate limited by the Claude API, try again in a moment';
+  if (err instanceof Anthropic.APIConnectionTimeoutError) return 'Claude request timed out after 60 seconds. Try Check again.';
+  if (err instanceof Anthropic.APIConnectionError) return 'Could not reach the Claude API. Check your internet connection or proxy settings.';
   if (err instanceof Anthropic.APIError) return `Claude API error ${err.status}: ${err.message}`;
-  if (err instanceof Anthropic.APIConnectionError) return 'Could not reach the Claude API (network)';
   if (/authentication method/i.test(err.message || '')) return 'No ANTHROPIC_API_KEY set: copy overlay/.env.example to overlay/.env and add your key';
   return err.message || String(err);
 }

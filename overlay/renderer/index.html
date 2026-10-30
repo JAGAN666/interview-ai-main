@@ -21,10 +21,13 @@
       <button id="analyze">Check ⌘⇧↵</button>
     </div>
 
+    <div class="no-drag note-row"><button id="live" aria-pressed="false">Start live</button><span>Watches the display under your pointer</span></div>
+
+    <div id="error" class="error hidden" role="alert"></div>
     <div id="summary" class="summary hidden"></div>
     <div id="results" class="results">
       <div class="empty">
-        Put the candidate's screen in front of you and press <kbd>⌘⇧↵</kbd>.
+        Live mode detects screen changes and checks new questions automatically. Keep questions outside this panel. Use Check for an immediate answer.
       </div>
     </div>
 
