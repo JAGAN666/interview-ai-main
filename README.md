@@ -31,6 +31,10 @@ obsolete responses discarded. Unchanged screens do not trigger repeated API call
 Errors are displayed and retried after a 10-second backoff. Live mode sends changed
 screenshots to the configured Claude API and incurs normal API usage.
 
+For a coding question, keep the prompt visible for the first check. The overlay shows a reference solution and reviews visible edits after you pause typing. As you scroll, it associates recognizable examples, constraints, and editor views with the active problem. It keeps the prior review on ambiguous screens and starts a fresh problem context when the task changes. Choose **Finish coding** to clear the review and pause capture. Choose **Start live** to resume. Reviews use screenshots and do not execute your code.
+
+Choose **Ask about this code** on a coding review to open a conversation about that snapshot. Use **Give me a hint**, **Edge cases**, or **Time and space complexity**, or type a follow-up. Replies stream into the panel. **Back to live review** returns to the latest screen analysis. Reopening the same review restores the conversation. Each request uses the selected review and up to four earlier exchanges. Clear and Finish coding discard the discussion.
+
 For best results, keep the question readable and pause unrelated animations or
 video on the watched display. This detects visual changes, not just question text;
 continuous changes can delay the current answer. Very small pixel changes may be
@@ -38,7 +42,8 @@ filtered as noise; use **Check** to force an analysis.
 
 ```sh
 npm test             # offline live-monitor regression tests
-npm run selftest     # Electron + Claude screenshot smoke test (requires key)
+npm run test:controls # Electron button, shortcut-handler and recovery tests (offline)
+npm run selftest     # Electron + Claude grading and coding checks (requires key)
 ```
 
 ## Web app
