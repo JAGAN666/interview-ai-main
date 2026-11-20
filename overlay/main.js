@@ -3,14 +3,14 @@ require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 
 const { app, BrowserWindow, globalShortcut, desktopCapturer, screen, ipcMain, systemPreferences, nativeImage } = require('electron');
-const { analyzeScreenshot, errorMessage, MODEL } = require('./analyzer');
+const { analyzeScreenshot, answerFollowUp, errorMessage, MODEL } = require('./analyzer');
 
 const { LiveMonitor } = require('./live-monitor');
 
 const monitor = new LiveMonitor({
   capture: captureDisplayUnderCursor,
-  analyze: async (jpeg, context) => {
-    try { return await analyzeScreenshot(jpeg, context); }
+  analyze: async (jpeg, context, previousQuestion, signal) => {
+    try { return await analyzeScreenshot(jpeg, context, previousQuestion, signal); }
     catch (err) { throw new Error(errorMessage(err)); }
   },
   emit: send,
@@ -21,6 +21,22 @@ const MAX_CAPTURE_WIDTH = 2400;
 
 let win;
 let clickThrough = false;
+let lastResult;
+let discussion;
+
+function closeDiscussion() {
+  discussion?.request?.abort();
+  discussion = null;
+  send('discussion', null);
+}
+
+function publishDiscussion() {
+  if (!discussion?.visible) return;
+  const { review, turns, pending, partial, error, failedPrompt } = discussion;
+  send('discussion', { question: review.question, turns, pending, partial, error, failedPrompt });
+}
+const unavailableShortcuts = [];
+let lastRendererCrash = -Infinity;
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
@@ -54,16 +70,39 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  win.webContents.on('did-finish-load', () => {
+    send('config', { model: MODEL, hasKey: Boolean(process.env.ANTHROPIC_API_KEY), note: monitor.note, platform: process.platform, unavailableShortcuts });
+    send('live', { enabled: monitor.enabled });
+    if (lastResult) send('result', lastResult);
+    publishDiscussion();
+    send('click-through', clickThrough);
+  });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error('Overlay renderer stopped:', details.reason);
+    if (details.reason === 'clean-exit' || win.isDestroyed()) return;
+    if (Date.now() - lastRendererCrash < 30000) {
+      app.quit();
+      return;
+    }
+    lastRendererCrash = Date.now();
+    win.webContents.reload();
+  });
   win.once('ready-to-show', () => {
     win.showInactive();
-    send('config', { model: MODEL, hasKey: Boolean(process.env.ANTHROPIC_API_KEY) });
     if (process.env.ANTHROPIC_API_KEY && process.env.OVERLAY_LIVE !== '0') monitor.start();
   });
+  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
 function send(channel, payload) {
-  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  if (channel === 'clear') { lastResult = null; closeDiscussion(); }
+  if (channel === 'result') {
+    if (discussion?.review.problemId && !payload.items.some(item => item.problemId === discussion.review.problemId)) closeDiscussion();
+    lastResult = payload;
+  }
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed() && !win.webContents.isCrashed()) {
+    win.webContents.send(channel, payload);
+  }
 }
 
 async function captureDisplayUnderCursor() {
@@ -74,12 +113,13 @@ async function captureDisplayUnderCursor() {
   }
 
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const scale = Math.min(display.scaleFactor, MAX_CAPTURE_WIDTH / display.size.width);
   const thumbnailSize = {
-    width: Math.round(display.size.width * display.scaleFactor),
-    height: Math.round(display.size.height * display.scaleFactor),
+    width: Math.round(display.size.width * scale),
+    height: Math.round(display.size.height * scale),
   };
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize });
-  const source = sources.find((s) => s.display_id === String(display.id)) || sources[0];
+  const source = sources.find((s) => s.display_id === String(display.id)) || (sources.length === 1 && sources[0]);
   if (!source || source.thumbnail.isEmpty()) throw new Error('Screen capture returned nothing');
 
   let image = source.thumbnail;
@@ -87,8 +127,8 @@ async function captureDisplayUnderCursor() {
   // Mask our own UI even on capture backends that ignore content protection.
   // This prevents answers/status updates from triggering another analysis.
   const { width, height } = image.getSize();
-  const pixels = image.toBitmap();
-  if (win && win.isVisible()) {
+  if (win && !win.isDestroyed() && win.isVisible()) {
+    const pixels = image.toBitmap();
     const bounds = win.getBounds();
     const sx = width / display.bounds.width;
     const sy = height / display.bounds.height;
@@ -106,11 +146,16 @@ async function captureDisplayUnderCursor() {
     image = nativeImage.createFromBitmap(pixels, { width, height });
   }
   const signature = image.resize({ width: Math.min(960, width), quality: 'best' });
-  return { jpeg: image.toJPEG(85), pixels: signature.toBitmap(), source: `${source.id}:${width}x${height}` };
+  return { get jpeg() { return image.toJPEG(85); }, pixels: signature.toBitmap(), source: `${source.id}:${width}x${height}` };
 }
 
 function runAnalysis() {
-  void monitor.tick(true);
+  if (process.env.ANTHROPIC_API_KEY) void monitor.tick(true);
+}
+
+function toggleLive() {
+  if (monitor.enabled) monitor.stop();
+  else if (process.env.ANTHROPIC_API_KEY) monitor.start();
 }
 
 function toggleVisible() {
@@ -126,16 +171,21 @@ function toggleClickThrough() {
 
 function move(dx, dy) {
   const [x, y] = win.getPosition();
-  win.setPosition(x + dx, y + dy);
+  const area = screen.getDisplayMatching(win.getBounds()).workArea;
+  const [width, height] = win.getSize();
+  win.setPosition(
+    Math.max(area.x, Math.min(x + dx, area.x + area.width - width)),
+    Math.max(area.y, Math.min(y + dy, area.y + area.height - height))
+  );
 }
 
 function registerShortcuts() {
   const shortcuts = {
     'CommandOrControl+Shift+Enter': runAnalysis,
-    'CommandOrControl+Shift+L': () => monitor.enabled ? monitor.stop() : monitor.start(),
+    'CommandOrControl+Shift+L': toggleLive,
     'CommandOrControl+Shift+H': toggleVisible,
     'CommandOrControl+Shift+K': toggleClickThrough,
-    'CommandOrControl+Shift+R': () => send('clear'),
+    'CommandOrControl+Shift+R': () => monitor.clearQuestion(),
     'CommandOrControl+Shift+Up': () => move(0, -MOVE_STEP),
     'CommandOrControl+Shift+Down': () => move(0, MOVE_STEP),
     'CommandOrControl+Shift+Left': () => move(-MOVE_STEP, 0),
@@ -143,14 +193,72 @@ function registerShortcuts() {
     'CommandOrControl+Shift+Q': () => app.quit(),
   };
   for (const [accelerator, handler] of Object.entries(shortcuts)) {
-    if (!globalShortcut.register(accelerator, handler)) console.warn(`Shortcut ${accelerator} is taken by another app`);
+    if (!globalShortcut.register(accelerator, handler)) unavailableShortcuts.push(accelerator.split('+').pop());
   }
 }
 
+ipcMain.on('open-discussion', (_event, at, index) => {
+  if (!lastResult || lastResult.at !== at || !Number.isInteger(index)) return;
+  const review = lastResult.items[index];
+  if (review?.question_type !== 'coding') return;
+  if (discussion?.review !== review) {
+    closeDiscussion();
+    discussion = { review, turns: [], pending: '', error: '' };
+  }
+  discussion.visible = true;
+  publishDiscussion();
+});
+ipcMain.on('close-discussion', () => {
+  if (discussion) discussion.visible = false;
+  send('discussion', null);
+});
+ipcMain.on('ask', async (_event, value) => {
+  const thread = discussion;
+  const prompt = typeof value === 'string' ? value.trim().slice(0, 2000) : '';
+  if (!thread?.visible || thread.request || !prompt || !process.env.ANTHROPIC_API_KEY) return;
+  thread.request = new AbortController();
+  thread.pending = prompt;
+  thread.partial = '';
+  thread.error = '';
+  thread.failedPrompt = '';
+  publishDiscussion();
+  try {
+    const reply = await answerFollowUp(thread.review, thread.turns.slice(-8), prompt, thread.request.signal, text => {
+      thread.partial = text;
+      if (discussion === thread && thread.visible) send('reply-text', text);
+    });
+    thread.turns.push({ role: 'user', content: prompt }, { role: 'assistant', content: reply });
+    thread.turns = thread.turns.slice(-40);
+  } catch (error) {
+    thread.error = errorMessage(error);
+    thread.failedPrompt = prompt;
+  } finally {
+    if (thread === discussion) {
+      thread.pending = '';
+      thread.request = null;
+      publishDiscussion();
+    }
+  }
+});
+
 ipcMain.on('note', (_event, value) => monitor.setNote(String(value || '').slice(0, 2000)));
-ipcMain.on('live', (_event, enabled) => enabled ? monitor.start() : monitor.stop());
+ipcMain.on('live', (_event, enabled) => {
+  if (!enabled) monitor.stop();
+  else if (process.env.ANTHROPIC_API_KEY) monitor.start();
+});
+ipcMain.on('finish', () => {
+  monitor.stop();
+  monitor.clearQuestion();
+});
 ipcMain.on('analyze', runAnalysis);
-ipcMain.on('hide', () => win.hide());
+ipcMain.on('hide', () => {
+  if (!unavailableShortcuts.includes('H')) win.hide();
+});
+ipcMain.on('clear', () => monitor.clearQuestion());
+ipcMain.on('quit', () => app.quit());
+ipcMain.on('click-through', () => {
+  if (!unavailableShortcuts.includes('K')) toggleClickThrough();
+});
 
 app.whenReady().then(() => {
   // No Dock icon and no Cmd+Tab entry.

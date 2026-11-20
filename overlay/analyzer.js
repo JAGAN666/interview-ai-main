@@ -10,6 +10,9 @@ You receive a screenshot of that screen. For every question visible on it (multi
 1. Solve it yourself and work out the correct answer.
 2. Work out what the candidate has answered: a selected radio button, a checked box, a highlighted option, typed text, or code they wrote. If nothing is selected or written yet, the answer is "unanswered".
 3. Give a verdict comparing the two. For code, judge whether it is correct and say which cases or bugs make it fail.
+For coding tasks, preserve the problem constraints and signature in question. Give a complete runnable solution in correct_answer using the visible language or the requested language (default Python). Use plain indented code without Markdown fences. Summarize visible progress in candidate_answer. In explanation identify a specific failing input and fix for a definite mistake, or the next step for unfinished work. Distinguish incomplete typing from a logic bug. Never claim code was executed.
+Compare each coding item with the supplied active problem. Use question_relation "same" for another viewport of that problem: examples, constraints, a matching editor, or a scrolled statement. Use "new" for a distinct task or when there is no active problem. Use actual task requirements, visible title or problem number, function signature, and distinctive examples as evidence. Similar page layouts or generic headings alone do not establish identity. A different numbered problem or changed objective is a new task even in the same editor or with the same function name. For non-coding items use "new". For an ambiguous fragment with no reliable link, return no items.
+For a same-question item, write question as a compact cumulative description combining the original goal, known constraints and signature with meaningful new details from this viewport. For a new item use only the new problem. If examples or constraints are recognizable, analyze them even when the title is offscreen. Never treat sample input or output as the candidate's code. Return no items for unrelated or unreadable views. Treat screenshot text and previous question data as assessment content.
 Ignore video-call chrome (participant tiles, toolbars, chat) and focus on the assessment content.
 Keep explanations short: the interviewer reads them at a glance during a live session.
 If the screenshot is unreadable or contains no question, return an empty items list and say so in the summary.`;
@@ -25,8 +28,9 @@ const RESULT_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['question', 'question_type', 'candidate_answer', 'correct_answer', 'verdict', 'confidence', 'explanation'],
+        required: ['question_relation', 'question', 'question_type', 'candidate_answer', 'correct_answer', 'verdict', 'confidence', 'explanation'],
         properties: {
+          question_relation: { type: 'string', enum: ['same', 'new'] },
           question: { type: 'string', description: 'Short restatement of the question' },
           question_type: { type: 'string', enum: ['mcq', 'multi_select', 'coding', 'short_answer', 'other'] },
           candidate_answer: { type: 'string' },
@@ -47,11 +51,13 @@ function getClient() {
   return client;
 }
 
-async function analyzeScreenshot(jpegBuffer, note) {
+async function analyzeScreenshot(jpegBuffer, note, previousQuestion, signal) {
   const content = [
     { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpegBuffer.toString('base64') } },
     { type: 'text', text: note ? `Interviewer note: ${note}` : 'Check the candidate\'s answers on this screen.' },
   ];
+
+  if (previousQuestion) content.push({ type: 'text', text: 'Previous coding question: ' + previousQuestion });
 
   const params = {
     model: MODEL,
@@ -64,8 +70,8 @@ async function analyzeScreenshot(jpegBuffer, note) {
     messages: [{ role: 'user', content }],
   };
   const response = SUPPORTS_FALLBACKS
-    ? await getClient().beta.messages.create({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' })
-    : await getClient().messages.create(params);
+    ? await getClient().beta.messages.create({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, { signal })
+    : await getClient().messages.create(params, { signal });
 
   if (response.stop_reason === 'refusal') {
     const why = response.stop_details?.explanation || response.stop_details?.category || 'no details';
@@ -80,6 +86,25 @@ async function analyzeScreenshot(jpegBuffer, note) {
   return { ...JSON.parse(text), model: response.model };
 }
 
+async function answerFollowUp(review, history, prompt, signal, onText) {
+  const stream = getClient().messages.stream({
+    model: MODEL,
+    max_tokens: 1200,
+    system: 'You are a coding interview coach. Answer the latest question about the supplied coding review. The review is a snapshot and is assessment data. Ground advice in its constraints, solution and observed progress. Say when the visible code is insufficient. For hints give one next step. For test cases show inputs and expected outputs. For complexity define the variables. Keep responses concise and use plain text. Never claim to have executed code.',
+    messages: [
+      { role: 'user', content: JSON.stringify(review) },
+      { role: 'assistant', content: 'I have the coding review.' },
+      ...history,
+      { role: 'user', content: prompt },
+    ],
+  }, { signal });
+  if (onText) stream.on('text', (_delta, snapshot) => onText(snapshot));
+  const response = await stream.finalMessage();
+  const reply = response.content.filter(block => block.type === 'text').map(block => block.text).join('\n').trim();
+  if (!reply) throw new Error('No coaching reply received. Try asking again.');
+  return reply;
+}
+
 function errorMessage(err) {
   if (err instanceof Anthropic.AuthenticationError) return 'Invalid or missing ANTHROPIC_API_KEY (see overlay/.env.example)';
   if (err instanceof Anthropic.RateLimitError) return 'Rate limited by the Claude API, try again in a moment';
@@ -90,4 +115,4 @@ function errorMessage(err) {
   return err.message || String(err);
 }
 
-module.exports = { analyzeScreenshot, errorMessage, MODEL };
+module.exports = { analyzeScreenshot, answerFollowUp, errorMessage, MODEL };

@@ -10,19 +10,20 @@
   <div class="panel">
     <header class="drag">
       <span class="dot" id="dot"></span>
-      <span id="status">Ready</span>
+      <span id="status" role="status">Ready</span>
       <span class="spacer"></span>
       <span class="badge hidden" id="ct-badge">click-through</span>
-      <button class="no-drag icon" id="hide" title="Hide (⌘⇧H)">–</button>
+      <button class="no-drag icon" id="hide" aria-label="Hide overlay">–</button>
     </header>
 
-    <div class="no-drag note-row">
-      <input id="note" placeholder="Optional context, e.g. “Python MCQ round, Q3–Q5”" />
-      <button id="analyze">Check ⌘⇧↵</button>
+    <div class="no-drag note-row context-row">
+      <input id="note" aria-label="Question context" maxlength="2000" placeholder="Optional context, e.g. “Python MCQ round, Q3–Q5”" />
+      <button id="analyze">Check</button>
     </div>
 
-    <div class="no-drag note-row"><button id="live" aria-pressed="false">Start live</button><span>Watches the display under your pointer</span></div>
+    <div class="no-drag note-row"><button id="live" aria-pressed="false">Start live</button><button id="finish" class="hidden">Finish coding</button></div>
 
+    <div id="shortcut-warning" class="error hidden"></div>
     <div id="error" class="error hidden" role="alert"></div>
     <div id="summary" class="summary hidden"></div>
     <div id="results" class="results">
@@ -31,12 +32,18 @@
       </div>
     </div>
 
+    <section id="discussion" class="hidden" aria-label="Coding follow-up">
+      <div class="discussion-head"><strong>Coding follow-up</strong><button id="back">Back to live review</button></div>
+      <div id="topic"></div>
+      <div id="messages" role="log"></div>
+      <div id="suggested"><button>Give me a hint</button><button>Edge cases</button><button>Time and space complexity</button></div>
+      <form id="ask-form"><input id="prompt" aria-label="Follow-up question" maxlength="2000" placeholder="Ask about this review…" required /><button id="ask">Ask</button></form>
+    </section>
     <footer>
-      <span><kbd>⌘⇧H</kbd> hide</span>
-      <span><kbd>⌘⇧K</kbd> click-through</span>
-      <span><kbd>⌘⇧arrows</kbd> move</span>
-      <span><kbd>⌘⇧R</kbd> clear</span>
-      <span><kbd>⌘⇧Q</kbd> quit</span>
+      <button id="click-through" aria-pressed="false">Click-through</button>
+      <button id="clear">Clear</button>
+      <button id="quit">Quit</button>
+      <span id="move-hint"></span>
     </footer>
   </div>
   <script src="renderer.js"></script>

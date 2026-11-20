@@ -15,6 +15,8 @@ class LiveMonitor {
     Object.assign(this, { capture, analyze, emit, now, settleMs, maxWaitMs, retryMs });
     this.enabled = false;
     this.version = 0;
+    this.session = 0;
+    this.questionId = 0;
     this.note = '';
     this.retryAt = 0;
   }
@@ -32,25 +34,43 @@ class LiveMonitor {
   }
 
   stop() {
+    this.session++;
+    this.analysisRequest?.abort();
     this.enabled = false;
     clearInterval(this.timer);
     this.version++;
     this.pending = false;
+    this.forceQueued = false;
     this.emit('live', { enabled: false });
+  }
+
+  clearQuestion() {
+    this.session++;
+    this.analysisRequest?.abort();
+    this.version++;
+    this.pending = false;
+    this.forceQueued = false;
+    this.coding = null;
+    this.emit('clear');
   }
 
   setNote(note) {
     if (note === this.note) return;
+    this.session++;
     this.note = note;
     this.version++;
-    if (this.latest) {
+    if (this.latest && this.enabled) {
       this.pending = true;
       this.since = this.lastChange = this.now();
     }
   }
 
   async tick(force = false) {
-    if (this.capturing || (!this.enabled && !force) || (!force && this.now() < this.retryAt)) return;
+    if (this.capturing) {
+      if (force) this.forceQueued = true;
+      return;
+    }
+    if ((!this.enabled && !force) || (!force && this.now() < this.retryAt)) return;
     this.capturing = true;
     const version = this.version;
     try {
@@ -69,23 +89,60 @@ class LiveMonitor {
         void this.drain();
       }
     } catch (error) {
+      if (version !== this.version) return;
       this.retryAt = this.now() + this.retryMs;
       this.emit('error', { message: error.message || String(error) });
     } finally {
       this.capturing = false;
+      if (this.forceQueued) {
+        this.forceQueued = false;
+        void this.tick(true);
+      }
     }
   }
 
   async drain() {
     if (this.busy || !this.pending) return;
     this.busy = true;
+    this.analysisRequest = new AbortController();
     this.pending = false;
     const version = this.version;
     const frame = this.latest;
+    const session = this.session;
     this.emit('status', { state: 'analyzing' });
     try {
-      const result = await this.analyze(frame.jpeg, this.note);
-      if (version === this.version) this.emit('result', { ...result, at: this.now() });
+      const previous = this.coding?.source === frame.source ? this.coding : null;
+      const result = await this.analyze(frame.jpeg, this.note, previous?.context, this.analysisRequest.signal);
+      const codingItem = result.items.find(item => item.question_type === 'coding');
+      if (session !== this.session || frame.source !== this.latest?.source) return;
+      // A scroll can finish before the first response. Keep the recognized task
+      // for the queued viewport without displaying an outdated answer.
+      if (version !== this.version && !codingItem) return;
+      if (codingItem) {
+        const same = previous && codingItem.question_relation === 'same';
+        const question = same ? previous.question : codingItem.question;
+        this.coding = {
+          id: same ? previous.id : ++this.questionId,
+          source: frame.source,
+          snapshot: { ...result, at: this.now() },
+          question,
+          context: question === codingItem.question ? question : question + '\nKnown details: ' + codingItem.question,
+        };
+        codingItem.problemId = this.coding.id;
+      }
+      if (version !== this.version) return;
+      this.retryAt = 0;
+      if (!result.items.length && previous) {
+        if (this.displayedId !== previous.id) {
+          this.emit('result', previous.snapshot);
+          this.displayedId = previous.id;
+        }
+        this.emit('status', { state: 'holding' });
+        return;
+      }
+      if (!codingItem) this.coding = null;
+      this.displayedId = this.coding?.id;
+      this.emit('result', { ...result, at: this.now() });
     } catch (error) {
       if (version === this.version) {
         this.pending = this.enabled;
@@ -94,6 +151,7 @@ class LiveMonitor {
         this.emit('error', { message: error.message || String(error) });
       }
     } finally {
+      this.analysisRequest = null;
       this.busy = false;
       // A manual request made during inference must not be lost while paused.
       if (this.pending && !this.enabled) void this.drain();
