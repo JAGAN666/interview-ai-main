@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('overlay', {
   ask: prompt => ipcRenderer.send('ask', prompt),
   setLive: (enabled) => ipcRenderer.send('live', Boolean(enabled)),
   finish: () => ipcRenderer.send('finish'),
+  debug: () => ipcRenderer.send('debug'),
   analyze: () => ipcRenderer.send('analyze'),
   setNote: (value) => ipcRenderer.send('note', value),
   clear: () => ipcRenderer.send('clear'),

@@ -9,8 +9,8 @@ const { LiveMonitor } = require('./live-monitor');
 
 const monitor = new LiveMonitor({
   capture: captureDisplayUnderCursor,
-  analyze: async (jpeg, context, codingContext, signal) => {
-    try { return await analyzeScreenshot(jpeg, context, codingContext, signal); }
+  analyze: async (jpeg, context, codingContext, signal, debug) => {
+    try { return await analyzeScreenshot(jpeg, context, codingContext, signal, debug); }
     catch (err) { throw new Error(errorMessage(err)); }
   },
   emit: send,
@@ -254,6 +254,9 @@ ipcMain.on('live', (_event, enabled) => {
 ipcMain.on('finish', () => {
   monitor.stop();
   monitor.clearQuestion();
+});
+ipcMain.on('debug', () => {
+  if (process.env.ANTHROPIC_API_KEY) void monitor.tick(true, true);
 });
 ipcMain.on('analyze', runAnalysis);
 ipcMain.on('hide', () => {

@@ -233,7 +233,29 @@ test('scrolling from code to failing tests preserves the original solution and e
   assert.deepEqual(contexts[3].observations, [...cases, error]);
   const third = s.events.filter(event => event.type === 'result')[2].data.items[0];
   assert.equal(third.correct_answer, fixed);
-  assert.equal(third.continuation, true);
   assert.deepEqual(s.monitor.coding.context.observations, []);
   assert.equal(s.monitor.coding.context.observedCode, '');
+});
+
+test('Debug captures the failing screen while a check is busy and uses the resulting code context', async () => {
+  const calls = [];
+  const s = setup((jpeg, note, context, signal, debug) =>
+    new Promise(resolve => calls.push({ screen: jpeg[0], context, debug, resolve })));
+  await s.monitor.tick(true);
+  s.set(frame(80));
+  await s.monitor.tick(true, true);
+  s.set(frame(160));
+  await s.monitor.tick();
+  calls[0].resolve({ items: [{ question_type: 'coding', question: 'Add', correct_answer: 'return a + b' }] });
+  await flush();
+  assert.equal(calls[1].debug, true);
+  assert.equal(calls[1].screen, 80);
+  assert.equal(calls[1].context.currentSolution, 'return a + b');
+  calls[1].resolve({ items: [{ question_type: 'coding', question_relation: 'same', explanation: 'Use addition.' }] });
+  await flush();
+  assert.equal(s.events.at(-1).data.items[0].explanation, 'Use addition.');
+  await s.monitor.tick(true);
+  assert.equal(calls[2].debug, false);
+  calls[2].resolve({ items: [] });
+  await flush();
 });

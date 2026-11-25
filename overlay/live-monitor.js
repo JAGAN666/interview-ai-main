@@ -24,10 +24,12 @@ class LiveMonitor {
   start() {
     if (this.enabled) return;
     this.enabled = true;
-    this.latest = null;
-    this.pending = false;
+    if (!this.debugFrame) {
+      this.latest = null;
+      this.pending = false;
+      this.version++;
+    }
     this.retryAt = 0;
-    this.version++;
     this.emit('live', { enabled: true });
     this.timer = setInterval(() => void this.tick(), 1000);
     void this.tick();
@@ -41,6 +43,8 @@ class LiveMonitor {
     this.version++;
     this.pending = false;
     this.forceQueued = false;
+    this.debugQueued = false;
+    this.debugFrame = null;
     this.emit('live', { enabled: false });
   }
 
@@ -50,6 +54,8 @@ class LiveMonitor {
     this.version++;
     this.pending = false;
     this.forceQueued = false;
+    this.debugQueued = false;
+    this.debugFrame = null;
     this.coding = null;
     this.emit('clear');
   }
@@ -65,9 +71,12 @@ class LiveMonitor {
     }
   }
 
-  async tick(force = false) {
+  async tick(force = false, debug = false) {
+    // Keep the screen the user chose until its debug result is delivered.
+    if (this.debugFrame) return;
     if (this.capturing) {
       if (force) this.forceQueued = true;
+      if (debug) this.debugQueued = true;
       return;
     }
     if ((!this.enabled && !force) || (!force && this.now() < this.retryAt)) return;
@@ -81,6 +90,7 @@ class LiveMonitor {
         if (!this.pending) this.since = time;
         this.lastChange = time;
         this.latest = frame;
+        if (debug) this.debugFrame = frame;
         this.version++;
         this.pending = true;
         this.emit('status', { state: 'changed' });
@@ -96,7 +106,9 @@ class LiveMonitor {
       this.capturing = false;
       if (this.forceQueued) {
         this.forceQueued = false;
-        void this.tick(true);
+        const queuedDebug = this.debugQueued;
+        this.debugQueued = false;
+        void this.tick(true, queuedDebug);
       }
     }
   }
@@ -109,10 +121,11 @@ class LiveMonitor {
     const version = this.version;
     const frame = this.latest;
     const session = this.session;
-    this.emit('status', { state: 'analyzing' });
+    const debug = frame === this.debugFrame;
+    this.emit('status', { state: debug ? 'debugging' : 'analyzing' });
     try {
       const previous = this.coding?.source === frame.source ? this.coding : null;
-      const result = await this.analyze(frame.jpeg, this.note, previous?.context, this.analysisRequest.signal);
+      const result = await this.analyze(frame.jpeg, this.note, previous?.context, this.analysisRequest.signal, debug);
       const codingItem = result.items.find(item => item.question_type === 'coding');
       if (session !== this.session || frame.source !== this.latest?.source) return;
       // A scroll can finish before the first response. Keep the recognized task
@@ -132,7 +145,6 @@ class LiveMonitor {
           observations: [...new Set([...(prior?.observations || []), ...(codingItem.observations || [])])],
         };
         codingItem.correct_answer = currentSolution;
-        codingItem.continuation = Boolean(same);
         this.coding = {
           id: same ? previous.id : ++this.questionId,
           source: frame.source,
@@ -149,7 +161,8 @@ class LiveMonitor {
           this.emit('result', previous.snapshot);
           this.displayedId = previous.id;
         }
-        this.emit('status', { state: 'holding' });
+        if (debug) this.emit('error', { message: result.summary || 'Show the failing code or test result and press Debug again.' });
+        else this.emit('status', { state: 'holding' });
         return;
       }
       if (!codingItem) this.coding = null;
@@ -163,10 +176,11 @@ class LiveMonitor {
         this.emit('error', { message: error.message || String(error) });
       }
     } finally {
+      if (debug && this.debugFrame === frame) this.debugFrame = null;
       this.analysisRequest = null;
       this.busy = false;
       // A manual request made during inference must not be lost while paused.
-      if (this.pending && !this.enabled) void this.drain();
+      if (this.pending && (!this.enabled || this.debugFrame)) void this.drain();
     }
   }
 }

@@ -23,13 +23,13 @@ monitorModule.LiveMonitor = class extends monitorModule.LiveMonitor {
     super({
       ...options,
       capture: async () => ({ source: 'fixture', pixels: Buffer.alloc(48), jpeg: Buffer.alloc(1) }),
-      analyze: async (_, note, context) => {
+      analyze: async (_, note, context, signal, debug) => {
         calls.push(note);
         if (simulateError) throw new Error('Simulated network failure');
         return { summary: 'One coding question', items: [{
           question_relation: context ? 'same' : 'new', observations: ['add(2, 3) expects 5'],
           question: 'Add two numbers', question_type: 'coding', candidate_answer: 'a - b',
-          correct_answer: context ? '' : 'return a + b', verdict: 'incorrect', confidence: 'high', explanation: 'Use addition.'
+          correct_answer: context ? '' : 'return a + b', verdict: 'incorrect', confidence: 'high', explanation: debug ? 'Replace subtraction with addition. For 2 and 3 the result is 5.' : 'Use addition.'
         }] };
       },
     });
@@ -77,7 +77,7 @@ app.once('browser-window-created', async (_, win) => {
     win.show();
     win.focus();
     if (unavailable) {
-      await until(() => page("['analyze','live','hide','click-through'].every(id => document.getElementById(id).disabled)"));
+      await until(() => page("['debug','analyze','live','hide','click-through'].every(id => document.getElementById(id).disabled)"));
       await click('clear');
       await until(() => page("document.querySelector('#status').textContent.includes('ANTHROPIC_API_KEY')"));
       actions.get('Enter')();
@@ -102,9 +102,9 @@ app.once('browser-window-created', async (_, win) => {
     await until(() => page("document.querySelector('#messages').textContent.includes('Turn 1: Give me a hint')"));
     await click('back');
     await until(() => page("!document.querySelector('.panel').classList.contains('discussing')"));
-    await click('analyze');
-    await until(() => page("document.querySelector('details code')?.textContent === 'return a + b'"));
-    assert.equal(await page("document.querySelector('details').open"), false);
+    await click('debug');
+    await until(() => page("document.querySelector('.explanation')?.textContent.includes('the result is 5')"));
+    assert.ok(await page("document.querySelector('code').getBoundingClientRect().height > 0 && !document.querySelector('details')"));
     await click('.discuss');
     await until(() => page("document.activeElement.id === 'prompt'"));
     await win.webContents.insertText('Why does it fail?');

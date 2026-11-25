@@ -52,13 +52,7 @@ function renderResult(result) {
     const answers = el('div', 'answers');
     answers.append(el('div', 'label', coding ? 'Your code' : 'Candidate'), el('div', 'value', item.candidate_answer || '—'));
     const solution = el(coding ? 'code' : 'div', 'value strong', item.correct_answer);
-    if (item.continuation) {
-      const details = el('details');
-      details.append(el('summary', 'label', 'View full solution'), solution);
-      answers.append(details);
-    } else {
-      answers.append(el('div', 'label', coding ? 'Solution' : 'Correct'), solution);
-    }
+    answers.append(el('div', 'label', coding ? 'Solution' : 'Correct'), solution);
     card.append(answers);
     if (!coding) card.append(feedback);
     if (coding) {
@@ -93,7 +87,7 @@ window.overlay.on('config', (config) => {
     $(id).title = unavailable ? 'Global shortcut unavailable' : prefix + key;
     if (id === 'hide' || id === 'click-through') $(id).disabled = unavailable;
   }
-  $('analyze').disabled = $('live').disabled = !hasKey;
+  $('debug').disabled = $('analyze').disabled = $('live').disabled = !hasKey;
   $('move-hint').textContent = prefix + 'arrows to move';
   $('ct-badge').textContent = prefix + 'K to enable clicks';
   if (!$('hide').disabled) $('hide').title = 'Hide · ' + prefix + 'H to show again';
@@ -106,7 +100,7 @@ window.overlay.on('config', (config) => {
 });
 
 window.overlay.on('status', ({ state }) => {
-  const labels = { changed: 'Screen changed · waiting for latest answer…', analyzing: 'Claude is checking…', holding: 'Question out of view · keeping last coding review' };
+  const labels = { debugging: 'Debugging your code…', changed: 'Screen changed · waiting for latest answer…', analyzing: 'Claude is checking…', holding: 'Question out of view · keeping last coding review' };
   $('error').classList.add('hidden');
   setStatus(labels[state] || 'Capturing screen…', 'busy');
   if (state === 'changed' && $('finish').classList.contains('hidden')) {
@@ -135,6 +129,7 @@ $('clear').addEventListener('click', () => window.overlay.clear());
 $('quit').addEventListener('click', () => window.overlay.quit());
 
 $('analyze').addEventListener('click', () => window.overlay.analyze());
+$('debug').addEventListener('click', () => window.overlay.debug());
 $('finish').addEventListener('click', () => window.overlay.finish());
 $('hide').addEventListener('click', () => window.overlay.hide());
 $('note').addEventListener('input', (e) => window.overlay.setNote(e.target.value));

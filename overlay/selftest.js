@@ -21,7 +21,7 @@ const PAGE = `<body style="font:20px sans-serif;padding:30px">
 app.on('window-all-closed', () => {});
 app.whenReady().then(async () => {
   try {
-    async function review(page, previousQuestion) {
+    async function review(page, previousQuestion, debug = false) {
       const win = new BrowserWindow({ width: 1000, height: 700, show: false, webPreferences: { offscreen: true } });
       const firstPaint = new Promise(resolve => win.webContents.once('paint', (_event, _rect, image) => resolve(image)));
       await win.loadURL('data:text/html,' + encodeURIComponent(page));
@@ -30,7 +30,7 @@ app.whenReady().then(async () => {
       assert.ok(!image.isEmpty(), 'Expected a rendered screenshot');
       const jpeg = image.toJPEG(85);
       win.destroy();
-      return analyzeScreenshot(jpeg, '', previousQuestion);
+      return analyzeScreenshot(jpeg, '', previousQuestion, undefined, debug);
     }
 
     const result = await review(PAGE);
@@ -38,6 +38,18 @@ app.whenReady().then(async () => {
     console.log('Passed multiple-choice grading');
 
     const editor = code => `<pre style="font:24px monospace;padding:25px">${code}</pre>`;
+    const compression = '<h1>Compress the String!</h1><p>Python 3. Read a nonempty string of digits. For each consecutive run print (count, digit) on one line separated by spaces.</p><pre>1222311 → (1, 1) (3, 2) (1, 3) (2, 1)</pre>';
+    for (const required of [false, true]) {
+      const task = required ? compression + '<p>You must use itertools.groupby.</p>' : compression;
+      const result = await review(task);
+      const code = result.items.find(item => item.question_type === 'coding')?.correct_answer;
+      assert.ok(code);
+      assert.doesNotMatch(code, /print\s*\(\s*\*/);
+      if (required) assert.match(code, /groupby/);
+      else assert.doesNotMatch(code, /^\s*(?:from|import)\s+/m);
+    }
+    console.log('Passed beginner-friendly compression with optional and required imports');
+
     const prompt = '<h1>Python: implement add(a, b) to return the sum of two integers.</h1>';
     const buggy = await review(prompt + editor('def add(a, b):\n    return a - b'));
     const issue = buggy.items.find(item => item.question_type === 'coding');
@@ -57,10 +69,10 @@ app.whenReady().then(async () => {
       initialSolution: issue.correct_answer, currentSolution: issue.correct_answer,
       observedCode: issue.observed_code, observations: issue.observations,
     };
-    const failure = await review(editor('Failed test: add(7, 4)\nExpected: 11\nActual: 3'), context);
+    const failure = await review(editor('Failed test: add(7, 4)\nExpected: 11\nActual: 3'), context, true);
     const diagnostic = failure.items.find(item => item.question_type === 'coding');
     assert.equal(diagnostic?.question_relation, 'same');
-    assert.equal(diagnostic.correct_answer, '');
+    assert.match(diagnostic.correct_answer, /def add\(.*\)[^]*return a\s*\+\s*b/);
     assert.match(diagnostic.explanation, /subtract|minus|a\s*-\s*b|addition|a\s*\+\s*b/i);
     assert.ok(diagnostic.observations.length);
     context.observations = [...context.observations, ...diagnostic.observations];
