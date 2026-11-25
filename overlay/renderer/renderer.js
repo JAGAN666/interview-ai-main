@@ -51,7 +51,14 @@ function renderResult(result) {
     if (coding) card.append(feedback);
     const answers = el('div', 'answers');
     answers.append(el('div', 'label', coding ? 'Your code' : 'Candidate'), el('div', 'value', item.candidate_answer || '—'));
-    answers.append(el('div', 'label', coding ? 'Solution' : 'Correct'), el(item.question_type === 'coding' ? 'code' : 'div', 'value strong', item.correct_answer));
+    const solution = el(coding ? 'code' : 'div', 'value strong', item.correct_answer);
+    if (item.continuation) {
+      const details = el('details');
+      details.append(el('summary', 'label', 'View full solution'), solution);
+      answers.append(details);
+    } else {
+      answers.append(el('div', 'label', coding ? 'Solution' : 'Correct'), solution);
+    }
     card.append(answers);
     if (!coding) card.append(feedback);
     if (coding) {

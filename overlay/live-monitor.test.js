@@ -122,7 +122,7 @@ test('keeps coding context across empty screens and replaces it on the next ques
   s.monitor.clearQuestion();
   await s.monitor.tick(true);
   await flush();
-  assert.deepEqual(contexts, [undefined, 'Find a pair', 'Find a pair', undefined]);
+  assert.deepEqual(contexts.map(context => context?.initialQuestion), [undefined, 'Find a pair', 'Find a pair', undefined]);
 });
 
 test('manual checks during capture coalesce into one follow-up', async () => {
@@ -193,13 +193,47 @@ test('scrolling before the first answer keeps the problem context without displa
   calls[0].resolve(result('Find two indices', 'new')); await flush();
   assert.ok(!s.events.some(e => e.type === 'result'));
   s.advance(1000); await s.monitor.tick();
-  assert.equal(calls[1].context, 'Find two indices');
+  assert.equal(calls[1].context.initialQuestion, 'Find two indices');
   const id = s.monitor.coding.id;
   calls[1].resolve(result('Find two indices, duplicates allowed', 'same')); await flush();
   assert.equal(s.monitor.coding.id, id);
   await s.monitor.tick(true);
-  assert.match(calls[2].context, /duplicates allowed/);
+  assert.match(calls[2].context.problemDetails, /duplicates allowed/);
   calls[2].resolve(result('Find the maximum sum', 'new')); await flush();
   assert.notEqual(s.monitor.coding.id, id);
-  assert.equal(s.monitor.coding.context, 'Find the maximum sum');
+  assert.equal(s.monitor.coding.context.initialQuestion, 'Find the maximum sum');
+});
+
+test('scrolling from code to failing tests preserves the original solution and evidence across revisions', async () => {
+  const cases = ['sum([]) expected 0'];
+  const error = 'IndexError on values[0]';
+  const original = 'return values[0] + sum(values[1:])';
+  const fixed = 'return sum(values)';
+  const steps = [
+    { correct_answer: original, observations: cases, observed_code: original },
+    { correct_answer: fixed, observations: [error] },
+    { correct_answer: '', observations: cases },
+    { question_relation: 'new', correct_answer: 'return max(values)' },
+  ];
+  const contexts = [];
+  const s = setup(async (_, __, context) => {
+    contexts.push(context);
+    return { items: [{ question_type: 'coding', question: 'Sum values',
+      question_relation: context ? 'same' : 'new', ...steps.shift() }] };
+  });
+  for (let i = 0; i < 4; i++) {
+    await s.monitor.tick(true);
+    await flush();
+    if (i === 0) s.monitor.stop();
+  }
+  assert.equal(contexts[1].currentSolution, original);
+  assert.equal(contexts[2].initialSolution, original);
+  assert.equal(contexts[2].currentSolution, fixed);
+  assert.equal(contexts[2].observedCode, original);
+  assert.deepEqual(contexts[3].observations, [...cases, error]);
+  const third = s.events.filter(event => event.type === 'result')[2].data.items[0];
+  assert.equal(third.correct_answer, fixed);
+  assert.equal(third.continuation, true);
+  assert.deepEqual(s.monitor.coding.context.observations, []);
+  assert.equal(s.monitor.coding.context.observedCode, '');
 });

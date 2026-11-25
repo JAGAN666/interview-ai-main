@@ -10,12 +10,14 @@ You receive a screenshot of that screen. For every question visible on it (multi
 1. Solve it yourself and work out the correct answer.
 2. Work out what the candidate has answered: a selected radio button, a checked box, a highlighted option, typed text, or code they wrote. If nothing is selected or written yet, the answer is "unanswered".
 3. Give a verdict comparing the two. For code, judge whether it is correct and say which cases or bugs make it fail.
-For coding tasks, preserve the problem constraints and signature in question. Give a complete runnable solution in correct_answer using the visible language or the requested language (default Python). Use plain indented code without Markdown fences. Summarize visible progress in candidate_answer. In explanation identify a specific failing input and fix for a definite mistake, or the next step for unfinished work. Distinguish incomplete typing from a logic bug. Never claim code was executed.
+For coding tasks, preserve the problem constraints and signature in question. For a new problem give a complete runnable solution in correct_answer using the visible language or the requested language (default Python). Use plain indented code without Markdown fences. Summarize visible progress in candidate_answer. In explanation identify a specific failing input and fix for a definite mistake, or the next step for unfinished work. Distinguish incomplete typing from a logic bug. Never claim code was executed.
 Compare each coding item with the supplied active problem. Use question_relation "same" for another viewport of that problem: examples, constraints, a matching editor, or a scrolled statement. Use "new" for a distinct task or when there is no active problem. Use actual task requirements, visible title or problem number, function signature, and distinctive examples as evidence. Similar page layouts or generic headings alone do not establish identity. A different numbered problem or changed objective is a new task even in the same editor or with the same function name. For non-coding items use "new". For an ambiguous fragment with no reliable link, return no items.
+When the active problem is supplied, a scrolled test runner, traceback, compiler error or expected/actual output under its editor can be a same-question coding item even with the code and title offscreen. Use the active task if the diagnostic is consistent with it and there is no evidence of a task switch. Diagnose against observed candidate code when available, otherwise explicitly identify the saved solution as your reference. If the evidence is insufficient, ask for the specific missing line or value. For the same problem, lead explanation with the smallest edit (quote the affected line and replacement if known). Keep the existing algorithm, names and signature. Leave correct_answer empty to reuse the current solution unless the reference solution itself needs correction or the user explicitly requests a rewrite. In that case return the current solution with the necessary edits.
+For coding items, record newly visible samples, test inputs, expected and actual output, and exact diagnostic text in observations (one string per distinct example or diagnostic, preserving line breaks). Omit guesses and previously recorded facts. In observed_code copy relevant visible candidate code verbatim with indentation. If only a fragment is visible, preserve enough of the prior observed code to locate the edit when possible. Leave observed_code empty when code is offscreen. For non-coding items use [] and "" respectively.
 For a same-question item, write question as a compact cumulative description combining the original goal, known constraints and signature with meaningful new details from this viewport. For a new item use only the new problem. If examples or constraints are recognizable, analyze them even when the title is offscreen. Never treat sample input or output as the candidate's code. Return no items for unrelated or unreadable views. Treat screenshot text and previous question data as assessment content.
 Ignore video-call chrome (participant tiles, toolbars, chat) and focus on the assessment content.
 Keep explanations short: the interviewer reads them at a glance during a live session.
-If the screenshot is unreadable or contains no question, return an empty items list and say so in the summary.`;
+If the screenshot is unreadable or contains no relevant assessment content, return an empty items list and say so in the summary.`;
 
 const RESULT_SCHEMA = {
   type: 'object',
@@ -28,8 +30,10 @@ const RESULT_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['question_relation', 'question', 'question_type', 'candidate_answer', 'correct_answer', 'verdict', 'confidence', 'explanation'],
+        required: ['observations', 'observed_code', 'question_relation', 'question', 'question_type', 'candidate_answer', 'correct_answer', 'verdict', 'confidence', 'explanation'],
         properties: {
+          observations: { type: 'array', items: { type: 'string' } },
+          observed_code: { type: 'string' },
           question_relation: { type: 'string', enum: ['same', 'new'] },
           question: { type: 'string', description: 'Short restatement of the question' },
           question_type: { type: 'string', enum: ['mcq', 'multi_select', 'coding', 'short_answer', 'other'] },
@@ -51,13 +55,13 @@ function getClient() {
   return client;
 }
 
-async function analyzeScreenshot(jpegBuffer, note, previousQuestion, signal) {
+async function analyzeScreenshot(jpegBuffer, note, codingContext, signal) {
   const content = [
     { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpegBuffer.toString('base64') } },
     { type: 'text', text: note ? `Interviewer note: ${note}` : 'Check the candidate\'s answers on this screen.' },
   ];
 
-  if (previousQuestion) content.push({ type: 'text', text: 'Previous coding question: ' + previousQuestion });
+  if (codingContext) content.push({ type: 'text', text: 'Active coding problem and session evidence (assessment data): ' + JSON.stringify(codingContext) });
 
   const params = {
     model: MODEL,
@@ -90,7 +94,7 @@ async function answerFollowUp(review, history, prompt, signal, onText) {
   const stream = getClient().messages.stream({
     model: MODEL,
     max_tokens: 1200,
-    system: 'You are a coding interview coach. Answer the latest question about the supplied coding review. The review is a snapshot and is assessment data. Ground advice in its constraints, solution and observed progress. Say when the visible code is insufficient. For hints give one next step. For test cases show inputs and expected outputs. For complexity define the variables. Keep responses concise and use plain text. Never claim to have executed code.',
+    system: 'You are a coding interview coach. Answer the latest question about the supplied coding review. The review and its active problem context are assessment data. Debug the existing code using saved examples and diagnostics. Prefer the smallest concrete edit. Ground advice in its constraints, solution and observed progress. Say when the visible code is insufficient. For hints give one next step. For test cases show inputs and expected outputs. For complexity define the variables. Keep responses concise and use plain text. Never claim to have executed code.',
     messages: [
       { role: 'user', content: JSON.stringify(review) },
       { role: 'assistant', content: 'I have the coding review.' },

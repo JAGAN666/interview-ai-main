@@ -23,12 +23,13 @@ monitorModule.LiveMonitor = class extends monitorModule.LiveMonitor {
     super({
       ...options,
       capture: async () => ({ source: 'fixture', pixels: Buffer.alloc(48), jpeg: Buffer.alloc(1) }),
-      analyze: async (_, note) => {
+      analyze: async (_, note, context) => {
         calls.push(note);
         if (simulateError) throw new Error('Simulated network failure');
         return { summary: 'One coding question', items: [{
+          question_relation: context ? 'same' : 'new', observations: ['add(2, 3) expects 5'],
           question: 'Add two numbers', question_type: 'coding', candidate_answer: 'a - b',
-          correct_answer: 'return a + b', verdict: 'incorrect', confidence: 'high', explanation: 'Use addition.'
+          correct_answer: context ? '' : 'return a + b', verdict: 'incorrect', confidence: 'high', explanation: 'Use addition.'
         }] };
       },
     });
@@ -44,6 +45,8 @@ require('./analyzer').answerFollowUp = async (review, history, prompt, signal, o
     return 'Obsolete reply';
   }
   assert.equal(review.question, 'Add two numbers');
+  assert.equal(review.context.initialSolution, 'return a + b');
+  assert.deepEqual(review.context.observations, ['add(2, 3) expects 5']);
   return 'Turn ' + (history.length / 2 + 1) + ': ' + prompt;
 };
 
@@ -99,6 +102,9 @@ app.once('browser-window-created', async (_, win) => {
     await until(() => page("document.querySelector('#messages').textContent.includes('Turn 1: Give me a hint')"));
     await click('back');
     await until(() => page("!document.querySelector('.panel').classList.contains('discussing')"));
+    await click('analyze');
+    await until(() => page("document.querySelector('details code')?.textContent === 'return a + b'"));
+    assert.equal(await page("document.querySelector('details').open"), false);
     await click('.discuss');
     await until(() => page("document.activeElement.id === 'prompt'"));
     await win.webContents.insertText('Why does it fail?');

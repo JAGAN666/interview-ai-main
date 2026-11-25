@@ -121,12 +121,24 @@ class LiveMonitor {
       if (codingItem) {
         const same = previous && codingItem.question_relation === 'same';
         const question = same ? previous.question : codingItem.question;
+        const prior = same ? previous.context : undefined;
+        const currentSolution = codingItem.correct_answer || prior?.currentSolution || '';
+        const context = {
+          initialQuestion: question,
+          problemDetails: codingItem.question,
+          initialSolution: prior?.initialSolution || currentSolution,
+          currentSolution,
+          observedCode: codingItem.observed_code || prior?.observedCode || '',
+          observations: [...new Set([...(prior?.observations || []), ...(codingItem.observations || [])])],
+        };
+        codingItem.correct_answer = currentSolution;
+        codingItem.continuation = Boolean(same);
         this.coding = {
           id: same ? previous.id : ++this.questionId,
           source: frame.source,
           snapshot: { ...result, at: this.now() },
           question,
-          context: question === codingItem.question ? question : question + '\nKnown details: ' + codingItem.question,
+          context,
         };
         codingItem.problemId = this.coding.id;
       }

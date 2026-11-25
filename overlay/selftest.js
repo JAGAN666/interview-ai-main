@@ -52,16 +52,30 @@ app.whenReady().then(async () => {
     assert.match(reply, /\b3\b/);
     console.log('Passed contextual coaching reply');
 
-    const examples = await review(editor('Examples\nadd(4, -6) → -2\nadd(0, 0) → 0\nConstraints: operands can be negative.'), issue.question);
+    const context = {
+      initialQuestion: issue.question, problemDetails: issue.question,
+      initialSolution: issue.correct_answer, currentSolution: issue.correct_answer,
+      observedCode: issue.observed_code, observations: issue.observations,
+    };
+    const failure = await review(editor('Failed test: add(7, 4)\nExpected: 11\nActual: 3'), context);
+    const diagnostic = failure.items.find(item => item.question_type === 'coding');
+    assert.equal(diagnostic?.question_relation, 'same');
+    assert.equal(diagnostic.correct_answer, '');
+    assert.match(diagnostic.explanation, /subtract|minus|a\s*-\s*b|addition|a\s*\+\s*b/i);
+    assert.ok(diagnostic.observations.length);
+    context.observations = [...context.observations, ...diagnostic.observations];
+    console.log('Passed debugging from a test result with code offscreen');
+
+    const examples = await review(editor('Examples\nadd(4, -6) → -2\nadd(0, 0) → 0\nConstraints: operands can be negative.'), context);
     const continuation = examples.items.find(item => item.question_type === 'coding');
     assert.equal(continuation?.question_relation, 'same');
     assert.match(continuation.question, /negative|signed|−|-/i);
-    const fixed = await review(editor('def add(a, b):\n    return a + b'), continuation.question);
+    const fixed = await review(editor('def add(a, b):\n    return a + b'), { ...context, problemDetails: continuation.question });
     assert.ok(fixed.items.some(item => item.question_type === 'coding' && item.verdict === 'correct'),
       'Expected corrected code to pass with the question offscreen');
     assert.equal(fixed.items[0].question_relation, 'same');
     const next = await review('<h1>Question 2. Return the product of two integers.</h1>' +
-      editor('def multiply(a, b):\n    return a * b'), fixed.items[0].question);
+      editor('def multiply(a, b):\n    return a * b'), { ...context, observedCode: fixed.items[0].observed_code });
     assert.equal(next.items[0].question_relation, 'new');
     assert.match(next.items[0].correct_answer, /multiply/);
     console.log('Passed scrolled examples, editor-only continuation and new problem detection');

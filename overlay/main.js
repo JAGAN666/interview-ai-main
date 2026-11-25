@@ -9,8 +9,8 @@ const { LiveMonitor } = require('./live-monitor');
 
 const monitor = new LiveMonitor({
   capture: captureDisplayUnderCursor,
-  analyze: async (jpeg, context, previousQuestion, signal) => {
-    try { return await analyzeScreenshot(jpeg, context, previousQuestion, signal); }
+  analyze: async (jpeg, context, codingContext, signal) => {
+    try { return await analyzeScreenshot(jpeg, context, codingContext, signal); }
     catch (err) { throw new Error(errorMessage(err)); }
   },
   emit: send,
@@ -97,7 +97,11 @@ function createWindow() {
 function send(channel, payload) {
   if (channel === 'clear') { lastResult = null; closeDiscussion(); }
   if (channel === 'result') {
-    if (discussion?.review.problemId && !payload.items.some(item => item.problemId === discussion.review.problemId)) closeDiscussion();
+    if (discussion?.review.problemId) {
+      const updated = payload.items.find(item => item.problemId === discussion.review.problemId);
+      if (updated) discussion.review = updated;
+      else closeDiscussion();
+    }
     lastResult = payload;
   }
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed() && !win.webContents.isCrashed()) {
@@ -223,7 +227,8 @@ ipcMain.on('ask', async (_event, value) => {
   thread.failedPrompt = '';
   publishDiscussion();
   try {
-    const reply = await answerFollowUp(thread.review, thread.turns.slice(-8), prompt, thread.request.signal, text => {
+    const context = monitor.coding?.id === thread.review.problemId ? monitor.coding?.context : undefined;
+    const reply = await answerFollowUp({ ...thread.review, context }, thread.turns.slice(-8), prompt, thread.request.signal, text => {
       thread.partial = text;
       if (discussion === thread && thread.visible) send('reply-text', text);
     });

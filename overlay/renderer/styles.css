@@ -115,6 +115,8 @@ kbd { font: inherit; padding: 0 4px; border: 1px solid var(--border); border-rad
 .error { margin: 0 12px 10px; padding: 10px; border: 1px solid var(--bad); border-radius: 8px; color: var(--bad); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; max-height: 160px; overflow-y: auto; flex-shrink: 0; }
 
 .explanation + .answers { margin-top: 8px; }
+.answers details { grid-column: 1 / -1; }
+.answers summary { cursor: pointer; }
 .answers code { tab-size: 4; line-height: 1.45; }
 footer { align-items: center; }
 footer button { padding: 3px 8px; background: transparent; color: var(--muted); }
